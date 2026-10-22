@@ -14,7 +14,7 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
 // MONGODB BULUT BAĞLANTISI (Kendi linkinizi buraya yazın)
-const MONGO_URI = "mongodb+srv://kullanici_adiniz:sifreniz@cluster0.xxxxx.mongodb.net/discord_db?retryWrites=true&w=majority";
+const MONGO_URI = "mongodb+srv://erolreis53_db_user:<db_password>@mead.czn10sn.mongodb.net/";
 
 mongoose.connect(MONGO_URI)
   .then(() => console.log("MongoDB Veritabanına Başarıyla Bağlanıldı!"))
