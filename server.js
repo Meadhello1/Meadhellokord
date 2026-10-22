@@ -4,74 +4,84 @@ const { Server } = require('socket.io');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
+const mongoose = require('mongoose');
 
 const app = express();
-
-// CORS ve JSON İzinleri
 app.use(cors());
 app.use(express.json());
 
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: "*", methods: ["GET", "POST"] }
-});
+const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
+
+// MONGODB BULUT BAĞLANTISI (Buraya kendi linkinizi tırnak içinde yazın)
+const MONGO_URI = "mongodb+srv://erolreis53_db_user:JMTw3QXaDywlCNm3mongodb+srv://erolreis53_db_user:<db_password>@mead.czn10sn.mongodb.net/";
+
+mongoose.connect(MONGO_URI)
+  .then(() => console.log("MongoDB Veritabanına Başarıyla Bağlanıldı!"))
+  .catch((err) => console.log("MongoDB Bağlantı Hatası:", err));
 
 const JWT_SECRET = "gizli_anahtar_123456";
-const users = [];
 
-// Ana Sayfa Test İstegi (Render Saglik Kontrolu İcin)
+// KULLANICI ŞEMASI (Veritabanı Tablosu)
+const userSchema = new mongoose.Schema({
+  username: { type: String, required: true },
+  tag: { type: String, required: true }, // #1234 formatı için
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  servers: [String],
+  friends: [String]
+});
+const User = mongoose.model('User', userSchema);
+
 app.get('/', (req, res) => {
-  res.send('Discord Backend Sunucusu Calisiyor!');
+  res.send('Discord Backend + MongoDB Calisiyor!');
 });
 
-// KAYIT OLMA
+// KAYIT OLMA (MongoDB Destekli + #ID Sistemi)
 app.post('/api/register', async (req, res) => {
   try {
     const { username, email, password } = req.body;
-    if (!username || !email || !password) {
-      return res.status(400).json({ error: "Lütfen tüm alanları doldurun." });
-    }
+    if (!username || !email || !password) return res.status(400).json({ error: "Lütfen tüm alanları doldurun." });
 
-    const existingUser = users.find(u => u.email === email);
-    if (existingUser) {
-      return res.status(400).json({ error: "Bu e-posta adresi zaten kayıtlı." });
-    }
+    const existingUser = await User.findOne({ email });
+    if (existingUser) return res.status(400).json({ error: "Bu e-posta adresi zaten kayıtlı." });
 
+    // Rastgele 4 haneli etiket oluştur (Örn: 4092)
+    const tag = Math.floor(1000 + Math.random() * 9000).toString();
     const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = { id: Date.now(), username, email, password: hashedPassword };
-    users.push(newUser);
 
-    res.json({ message: "Kayıt başarılı! Şimdi giriş yapabilirsiniz." });
+    const newUser = new User({ username, tag, email, password: hashedPassword });
+    await newUser.save(); // Kullanıcıyı kalıcı olarak MongoDB'ye kaydet
+
+    res.json({ message: `Kayıt başarılı! Discord ID: ${username}#${tag}` });
   } catch (err) {
     res.status(500).json({ error: "Sunucu hatası oluştu." });
   }
 });
 
-// GİRİŞ YAPMA
+// GİRİŞ YAPMA (MongoDB Destekli)
 app.post('/api/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    const user = users.find(u => u.email === email);
+    const user = await User.findOne({ email }); // Veritabanından kullanıcıyı bul
 
     if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(400).json({ error: "E-posta veya şifre hatalı!" });
     }
 
-    const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET);
-    res.json({ message: "Giriş başarılı!", token, username: user.username });
+    const token = jwt.sign({ userId: user._id, username: user.username, tag: user.tag }, JWT_SECRET);
+    res.json({ message: "Giriş başarılı!", token, username: user.username, tag: user.tag });
   } catch (err) {
     res.status(500).json({ error: "Sunucu hatası oluştu." });
   }
 });
 
-// SOCKET.IO MESAJLAŞMA
+// SOCKET.IO
 io.on('connection', (socket) => {
-  console.log('Bir kullanıcı bağlandı:', socket.id);
-
+  console.log('Kullanıcı bağlandı:', socket.id);
   socket.on('send_message', (data) => {
     io.emit('receive_message', data);
   });
-
   socket.on('disconnect', () => {
     console.log('Kullanıcı ayrıldı:', socket.id);
   });
@@ -79,5 +89,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Sunucu ${PORT} portunda başarıyla çalışıyor!`);
+  console.log(`Sunucu ${PORT} portunda çalışıyor...`);
 });
